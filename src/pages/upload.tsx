@@ -1,20 +1,12 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import { useState } from "react";
 import { supabase } from "../lib/supabaseClient";
-import axios from "axios";
 
 export default function UploadPage() {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Configuración de Cloudinary
-  const cloudinaryConfig = {
-    cloudName: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
-    uploadPreset: process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET,
-  };
-
-  // Manejar la subida del PDF
+  // Subir directamente a Cloudinary
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file) {
@@ -26,24 +18,38 @@ export default function UploadPage() {
       setLoading(true);
       setError(null);
 
-      // Crear el FormData para enviar el archivo a la API
+      // Crear FormData para enviar a Cloudinary
       const formData = new FormData();
       formData.append("file", file);
+      formData.append(
+        "upload_preset",
+        process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET!
+      );
 
-      // Hacer la petición a la API de subida
-      const response = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
+      // Subir el archivo directamente a Cloudinary
+      const cloudinaryResponse = await fetch(
+        `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/upload`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
 
-      // Verificar si la respuesta es un JSON válido
-      const contentType = response.headers.get("content-type");
-      if (!response.ok || !contentType?.includes("application/json")) {
-        const errorData = await response.text(); // Obtener el mensaje de error
-        throw new Error(errorData || "La respuesta no es válida");
-      }
+      const cloudinaryData = await cloudinaryResponse.json();
+      if (!cloudinaryResponse.ok)
+        throw new Error(cloudinaryData.error?.message || "Error en Cloudinary");
 
-      const data = await response.json();
+      // Guardar en Supabase
+      const { error: supabaseError } = await supabase.from("pdfs").insert([
+        {
+          url: cloudinaryData.secure_url,
+          name: file.name,
+          created_at: new Date().toISOString(),
+        },
+      ]);
+
+      if (supabaseError) throw supabaseError;
+
       alert("PDF subido exitosamente!");
       setFile(null);
     } catch (err) {
