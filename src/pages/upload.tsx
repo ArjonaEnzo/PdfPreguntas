@@ -26,32 +26,24 @@ export default function UploadPage() {
       setLoading(true);
       setError(null);
 
-      // Paso 1: Subir el PDF a Cloudinary
+      // Crear el FormData para enviar el archivo a la API
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("upload_preset", cloudinaryConfig.uploadPreset!);
 
-      const cloudinaryResponse = await axios.post(
-        `https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/upload`,
-        formData,
-        {
-          headers: { "Content-Type": "multipart/form-data" },
-        }
-      );
+      // Hacer la petición a la API de subida
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
 
-      // Paso 2: Guardar metadatos en Supabase
-      const { data, error: supabaseError } = await supabase
-        .from("pdfs")
-        .insert([
-          {
-            url: cloudinaryResponse.data.secure_url,
-            name: file.name,
-            created_at: new Date().toISOString(),
-          },
-        ]);
+      // Verificar si la respuesta es un JSON válido
+      const contentType = response.headers.get("content-type");
+      if (!response.ok || !contentType?.includes("application/json")) {
+        const errorData = await response.text(); // Obtener el mensaje de error
+        throw new Error(errorData || "La respuesta no es válida");
+      }
 
-      if (supabaseError) throw supabaseError;
-
+      const data = await response.json();
       alert("PDF subido exitosamente!");
       setFile(null);
     } catch (err) {
